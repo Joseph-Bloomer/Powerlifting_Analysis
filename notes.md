@@ -25,6 +25,23 @@ item says whether it needs a decision or is just a caveat to carry.
 
 ## Open
 
+- **ml.py fills best_before_kg and prior_best_kg with 0.0 when there is no
+  history.** Visible as a detached cluster at the right of the SHAP summary:
+  the tree splits those rows off cleanly, and the `no_history` indicator is in
+  the design beside them, so nothing is being hidden. But 0 kg is not a
+  plausible weight, and the logistic regression sees it after scaling as an
+  extreme value rather than a category. A median fill plus the indicator, or a
+  separate model for first-timers, would be cleaner if the predictive stage
+  ever carries weight.
+- **The placebo family is the open question for the design, not a detail.**
+  Seven of eight fake offsets are significant and five exceed the true estimate
+  in absolute size. Until that is explained the headline coefficient cannot be
+  read as a milestone effect. Candidate explanations worth testing: the two
+  milestone grids coincide every ~90 kg (diagnostic 5); attempt weights cluster
+  on the 2.5 kg loadable grid, so any offset grid picks up loading structure;
+  and the kilo comb is strong enough that a 10 kg-aligned offset is itself a
+  milestone grid.
+
 - **Runtime.** econ_models.py takes roughly 10-15 minutes on this machine. The
   cost is absorbing 296k lifter fixed effects by alternating projections across
   five fixed-effect sets; the inner loop is already Fortran-ordered, which cut
