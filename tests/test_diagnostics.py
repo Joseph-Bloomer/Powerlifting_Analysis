@@ -26,7 +26,7 @@ def sample(n: int = 4000, seed: int = 3) -> pl.DataFrame:
 
 def test_identifying_sample_needs_both_conditions():
     base = sample()
-    restricted, stats = dg.identifying_sample(base)
+    restricted, fe_matching, stats = dg.identifying_sample(base)
     per = base.group_by("lifter_id").agg(
         pl.col("meet_id").n_unique().alias("meets"),
         pl.col("on_lb_milestone").n_unique().alias("lv"),
@@ -38,21 +38,21 @@ def test_identifying_sample_needs_both_conditions():
 
 def test_identifying_sample_is_a_subset():
     base = sample()
-    restricted, _ = dg.identifying_sample(base)
+    restricted, _, _ = dg.identifying_sample(base)
     assert restricted.height <= base.height
     assert set(restricted["lifter_id"].unique()) <= set(base["lifter_id"].unique())
 
 
 def test_identifying_sample_drops_single_meet_lifters():
     base = sample()
-    restricted, _ = dg.identifying_sample(base)
+    restricted, _, _ = dg.identifying_sample(base)
     meets = restricted.group_by("lifter_id").agg(pl.col("meet_id").n_unique().alias("m"))
     assert (meets["m"] > 1).all()
 
 
 def test_identifying_sample_drops_lifters_never_on_a_milestone():
     base = sample()
-    restricted, _ = dg.identifying_sample(base)
+    restricted, _, _ = dg.identifying_sample(base)
     lv = restricted.group_by("lifter_id").agg(
         pl.col("on_lb_milestone").n_unique().alias("lv")
     )
@@ -60,7 +60,7 @@ def test_identifying_sample_drops_lifters_never_on_a_milestone():
 
 
 def test_stats_report_the_multi_region_count():
-    _, stats = dg.identifying_sample(sample())
+    _, _, stats = dg.identifying_sample(sample())
     assert "lifters_multi_region" in stats
     assert stats["lifters_multi_region"] <= stats["lifters_total"]
 
@@ -267,3 +267,15 @@ def test_assign_group_matches_the_discover_definition():
     from discover import GROUPS as DISCOVER_GROUPS
 
     assert [g for g, _ in dg.GROUPS] == list(DISCOVER_GROUPS)
+
+
+def test_fe_matching_restriction_is_the_looser_one():
+    """FE_LIFTER absorbs lifter_id, not lifter x meet, so a single-meet lifter
+    whose milestone status varies across lifts still identifies the estimate."""
+    base = sample()
+    as_specified, fe_matching, stats = dg.identifying_sample(base)
+    assert fe_matching.height >= as_specified.height
+    assert stats["lifters_ms_varies"] >= stats["lifters_identifying"]
+    assert set(as_specified["lifter_id"].unique()) <= set(
+        fe_matching["lifter_id"].unique()
+    )

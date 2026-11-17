@@ -33,9 +33,9 @@ std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
   [headline (base FE)] dropped, no variance: no_history
   [headline + lifter FE] dropped, no variance: no_history
   [US pound-loaded only] lb_region is constant here, so its interactions drop and the milestone main effect carries the estimate
-  [US pound-loaded only] dropped, no variance: on_kg_milestone, lb_region, kg_ms_x_region, no_history, lb_ms_x_region
+  [US pound-loaded only] dropped, no variance: on_kg_milestone, lb_region, lb_ms_x_region, kg_ms_x_region, no_history
   [US kilo-loaded only] lb_region is constant here, so its interactions drop and the milestone main effect carries the estimate
-  [US kilo-loaded only] dropped, no variance: lb_region, no_history, lb_ms_x_region, kg_ms_x_region
+  [US kilo-loaded only] dropped, no variance: lb_region, lb_ms_x_region, kg_ms_x_region, no_history
   [discovered milestones (test half)] milestones found in the discovery half; this is the only outcome test on them, run on meets discovery never saw
   [discovered milestones (test half)] dropped, no variance: no_history
 
@@ -79,20 +79,21 @@ std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
   [placebo (+12.5 kg fake milestones)] should show no effect if the design is sound
   [placebo (+12.5 kg fake milestones)] dropped, no variance: no_history
   [logit (25% lifter sample, AME)] average marginal effects; Sex and year dummies only (logit cannot absorb the lifter or weight-class effects)
+  [logit (25% lifter sample, AME)] dropped, no variance: no_history
 
 
 ASYMMETRY AROUND A POUND MILESTONE (outcome: jump_kg, in kg)
 ======================================================================
-effect sizes in percentage points of success probability
+effect sizes in kg
 
                             asymmetry: lb region  asymmetry: kg region
 ----------------------------------------------------------------------
-running_kg                             3.467***             -1.151*** 
-                                         (0.376)               (0.366)
-above                                -34.079***             -1.804    
-                                         (3.150)               (3.066)
-running_x_above                        0.789                 2.199*** 
-                                         (0.823)               (0.802)
+running_kg                             0.035***             -0.012*** 
+                                         (0.004)               (0.004)
+above                                 -0.341***             -0.018    
+                                         (0.032)               (0.031)
+running_x_above                        0.008                 0.022*** 
+                                         (0.008)               (0.008)
 ----------------------------------------------------------------------
 observations                             505,989               497,991
 lifters                                  137,720               135,638

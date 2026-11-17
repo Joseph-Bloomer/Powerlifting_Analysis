@@ -76,6 +76,40 @@ BASE_TERMS = [
     "no_history",
 ]
 
+DISCOVERED_TERMS = [
+    "jump_pct", "on_discovered_milestone", "lb_region", "disc_ms_x_region",
+    "prior_meets", "would_be_pr", "no_history",
+]
+
+PLACEBO_TERMS = [
+    "jump_pct", "on_fake_milestone", "on_kg_milestone", "lb_region",
+    "fake_ms_x_region", "kg_ms_x_region", "prior_meets", "would_be_pr",
+    "no_history",
+]
+
+ASYMMETRY_TERMS = ["running_kg", "above", "running_x_above"]
+
+
+def spec_terms(model_name: str) -> list[str]:
+    """The term list a specification was asked for, from its name.
+
+    Used to re-derive which terms a column dropped when rebuilding the report
+    from the CSV, where only the surviving terms appear.
+    """
+    lowered = model_name.lower()
+    if "asymmetry" in lowered:
+        return ASYMMETRY_TERMS
+    if "placebo" in lowered:
+        return PLACEBO_TERMS
+    if "discovered" in lowered:
+        return DISCOVERED_TERMS
+    return BASE_TERMS
+
+
+def outcome_of(model_name: str) -> str:
+    """Asymmetry models regress jump_kg; everything else regresses success."""
+    return "jump_kg" if "asymmetry" in model_name.lower() else "success"
+
 
 def use_utf8_stdout() -> None:
     if hasattr(sys.stdout, "reconfigure"):
@@ -155,8 +189,18 @@ class Fit:
     n: int
     n_clusters: int
     outcome_mean: float
+    outcome: str = "success"
     note: str = ""
     dropped: list[str] = field(default_factory=list)
+
+    def scale(self) -> tuple[float, str]:
+        """Display scale and unit for this outcome.
+
+        A 0/1 outcome times 100 is percentage points. Any other outcome is
+        already in its own units, and multiplying it by 100 produced the
+        asymmetry tables reading kg x100 under a "percentage points" header.
+        """
+        return (100.0, "pp") if self.outcome == "success" else (1.0, "kg")
 
     def t(self) -> np.ndarray:
         return self.beta / self.se
@@ -170,15 +214,20 @@ class Fit:
         if term not in self.terms:
             return None
         i = self.terms.index(term)
+        mult, unit = self.scale()
         return {
             "term": term,
             "coef": self.beta[i],
-            "pp": self.beta[i] * 100,
-            "se_pp": self.se[i] * 100,
+            # pp/se_pp/ci_*_pp keep their names for compatibility but carry the
+            # outcome's own units; `unit` says which.
+            "pp": self.beta[i] * mult,
+            "se_pp": self.se[i] * mult,
             "t": self.t()[i],
             "p": self.p()[i],
-            "ci_lo_pp": (self.beta[i] - 1.96 * self.se[i]) * 100,
-            "ci_hi_pp": (self.beta[i] + 1.96 * self.se[i]) * 100,
+            "ci_lo_pp": (self.beta[i] - 1.96 * self.se[i]) * mult,
+            "ci_hi_pp": (self.beta[i] + 1.96 * self.se[i]) * mult,
+            "outcome": self.outcome,
+            "unit": unit,
         }
 
 
@@ -313,6 +362,7 @@ def fit_model(
         n=df.height,
         n_clusters=n_clusters,
         outcome_mean=float(df[outcome].cast(pl.Float64).mean()),
+        outcome=outcome,
         note=note,
         dropped=dropped,
     )
@@ -431,7 +481,7 @@ def asymmetry_test(df: pl.DataFrame) -> list[Fit]:
         (pl.col("running_kg") * pl.col("above")).alias("running_x_above"),
     )
 
-    terms = ["running_kg", "above", "running_x_above"]
+    terms = ASYMMETRY_TERMS
     fits = []
     for label, sub in (
         ("lb region", window.filter(pl.col("lb_region") == 1)),
@@ -480,10 +530,7 @@ def run_specifications(sample: pl.DataFrame) -> list[Fit]:
                            "and the milestone main effect carries the estimate"))
 
     print("\nsecondary 2: discovered milestones, test half only")
-    disc_terms = [
-        "jump_pct", "on_discovered_milestone", "lb_region", "disc_ms_x_region",
-        "prior_meets", "would_be_pr", "no_history",
-    ]
+    disc_terms = DISCOVERED_TERMS
     test_half = sample.filter(
         (pl.col("split") == "test") & pl.col("on_discovered_milestone").is_not_null()
     )
@@ -498,11 +545,7 @@ def run_specifications(sample: pl.DataFrame) -> list[Fit]:
     add(fit_model(sample.filter(pl.col("Tested") == "Yes"),
                   "tested only", BASE_TERMS, FE_BASE))
 
-    placebo_terms = [
-        "jump_pct", "on_fake_milestone", "on_kg_milestone", "lb_region",
-        "fake_ms_x_region", "kg_ms_x_region", "prior_meets", "would_be_pr",
-        "no_history",
-    ]
+    placebo_terms = PLACEBO_TERMS
     add(fit_model(sample, "placebo (+12.5 kg fake milestones)",
                   placebo_terms, FE_BASE,
                   note="should show no effect if the design is sound"))
@@ -583,7 +626,7 @@ def tidy(fits: list[Fit]) -> pl.DataFrame:
             rows.append(row)
     return pl.DataFrame(rows).select(
         "model", "term", "coef", "pp", "se_pp", "t", "p", "ci_lo_pp", "ci_hi_pp",
-        "n", "n_lifters", "outcome_mean", "note",
+        "outcome", "unit", "n", "n_lifters", "outcome_mean", "note",
     )
 
 
@@ -592,10 +635,16 @@ def stars(p: float) -> str:
 
 
 def side_by_side(fits: list[Fit], terms: list[str], title: str) -> str:
-    """A regression table in percentage points, coefficients over std errors."""
+    """A regression table, coefficients over std errors, in the outcome's units."""
     width = 22
     lines = [title, "=" * (26 + width * len(fits))]
-    lines.append("effect sizes in percentage points of success probability")
+    units = {f.scale()[1] for f in fits}
+    lines.append(
+        "effect sizes in percentage points of success probability"
+        if units == {"pp"}
+        else "effect sizes in kg" if units == {"kg"}
+        else "effect sizes in each column's own units; see the unit column in the CSV"
+    )
     lines.append("")
     header = f"{'':26s}" + "".join(f"{f.name[:width-2]:>{width}s}" for f in fits)
     lines += [header, "-" * len(header)]
@@ -632,12 +681,97 @@ def side_by_side(fits: list[Fit], terms: list[str], title: str) -> str:
     return "\n".join(lines)
 
 
+def fits_from_csv(path: Path) -> list[Fit]:
+    """Reconstruct Fit objects from a tidy CSV, without re-estimating anything.
+
+    The standard error is recovered as coef / t rather than from se_pp, because
+    se_pp is stored in display units and older CSVs predate the unit column.
+    coef and t are both unit-free, so this is exact whatever scale was written.
+
+    The per-column "dropped, no variance" footnotes are not in the CSV; they
+    are re-derived as the terms a specification asked for that have no row.
+    """
+    table = pl.read_csv(path)
+    fits = []
+    for name in table["model"].unique(maintain_order=True).to_list():
+        rows = table.filter(pl.col("model") == name)
+        coef = rows["coef"].to_numpy()
+        t = rows["t"].to_numpy()
+        with np.errstate(divide="ignore", invalid="ignore"):
+            se = np.where(t != 0, np.abs(coef / np.where(t == 0, np.nan, t)), np.nan)
+        # A zero coefficient leaves t at zero and se indeterminate; fall back
+        # to the stored display standard error, undoing its scale.
+        outcome = (
+            rows["outcome"][0] if "outcome" in rows.columns else outcome_of(name)
+        )
+        mult = 100.0 if outcome == "success" else 1.0
+        se = np.where(np.isfinite(se), se, rows["se_pp"].to_numpy() / mult)
+
+        terms = rows["term"].to_list()
+        fits.append(
+            Fit(
+                name=name,
+                terms=terms,
+                beta=coef,
+                se=se,
+                n=int(rows["n"][0]),
+                n_clusters=int(rows["n_lifters"][0]),
+                outcome_mean=float(rows["outcome_mean"][0]),
+                outcome=outcome,
+                note=rows["note"][0] or "",
+                dropped=[t for t in spec_terms(name) if t not in terms],
+            )
+        )
+    return fits
+
+
+def write_report(fits: list[Fit], path: Path) -> str:
+    """The side-by-side report, grouped the way main() groups it."""
+    by_name = {f.name: f for f in fits}
+    headline = [
+        by_name[n] for n in (
+            "headline (base FE)", "headline + lifter FE",
+            "US pound-loaded only", "US kilo-loaded only",
+            "discovered milestones (test half)",
+        ) if n in by_name
+    ]
+    asym = [f for f in fits if f.outcome != "success"]
+    rest = [f for f in fits if f not in headline and f not in asym]
+
+    sections = [
+        side_by_side(headline, [*BASE_TERMS, "on_discovered_milestone",
+                                "disc_ms_x_region"],
+                     "HEADLINE AND SECONDARY ANALYSES"),
+        side_by_side(rest, [*BASE_TERMS, "on_fake_milestone", "fake_ms_x_region"],
+                     "ROBUSTNESS"),
+        side_by_side(asym, ASYMMETRY_TERMS,
+                     "ASYMMETRY AROUND A POUND MILESTONE (outcome: jump_kg, in kg)"),
+    ]
+    text = "\n\n\n".join(s for s in sections if s)
+    path.write_text(text, encoding="utf-8")
+    return text
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--src", type=Path, default=IN_PARQUET)
     parser.add_argument("--skip-logit", action="store_true")
+    parser.add_argument(
+        "--rebuild-report",
+        action="store_true",
+        help="rewrite econ_models.txt from econ_models.csv without re-estimating",
+    )
     args = parser.parse_args()
     use_utf8_stdout()
+
+    if args.rebuild_report:
+        if not CSV_PATH.exists():
+            print(f"{CSV_PATH} not found - run the stage first.", file=sys.stderr)
+            return 1
+        text = write_report(fits_from_csv(CSV_PATH), TXT_PATH)
+        print(f"rebuilt {TXT_PATH} from {CSV_PATH} (no refit)\n")
+        print(text)
+        return 0
 
     if not args.src.exists():
         print(f"{args.src} not found - run the discover stage first.", file=sys.stderr)
@@ -654,7 +788,7 @@ def main() -> int:
     for fit in asym:
         row = fit.row("running_x_above")
         print(f"  {fit.name:44s} n={fit.n:>9,}  slope difference = "
-              f"{row['coef']:+.4f} kg per kg (se {row['se_pp']/100:.4f})")
+              f"{row['coef']:+.4f} kg per kg (se {row['se_pp']:.4f})")
 
     if not args.skip_logit:
         print("\nlogit")

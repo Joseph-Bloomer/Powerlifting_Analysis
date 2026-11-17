@@ -114,35 +114,46 @@ def assign_group(df: pl.DataFrame) -> pl.DataFrame:
 # --- 1. the fixed-effects identifying sample --------------------------------
 
 
-def identifying_sample(sample: pl.DataFrame) -> tuple[pl.DataFrame, dict]:
-    """Lifters who identify the fixed-effects estimate.
+def identifying_sample(sample: pl.DataFrame) -> tuple[pl.DataFrame, pl.DataFrame, dict]:
+    """The two restrictions, and the lifter counts behind them.
 
-    Joe's definition: more than one meet, and milestone status that varies
-    within the lifter. A lifter with one meet, or who is never on a milestone,
-    contributes nothing to a within-lifter comparison.
+    Joe's definition is >1 meet and milestone status varying within the lifter.
+    FE_LIFTER absorbs lifter_id, not lifter x meet, so a lifter with a single
+    meet still identifies the estimate whenever milestone status varies across
+    their lifts inside it. The second restriction is therefore the one that
+    matches what the fixed effect actually absorbs. Both are reported; neither
+    is preferred on the basis of what it produces.
     """
     per_lifter = sample.group_by("lifter_id").agg(
         pl.col("meet_id").n_unique().alias("meets"),
         pl.col("on_lb_milestone").n_unique().alias("ms_levels"),
         pl.col("lb_region").n_unique().alias("region_levels"),
     )
-    keep = per_lifter.filter((pl.col("meets") > 1) & (pl.col("ms_levels") > 1))
+    as_specified = per_lifter.filter((pl.col("meets") > 1) & (pl.col("ms_levels") > 1))
+    fe_matching = per_lifter.filter(pl.col("ms_levels") > 1)
     stats = {
         "lifters_total": per_lifter.height,
         "lifters_multi_meet": per_lifter.filter(pl.col("meets") > 1).height,
-        "lifters_ms_varies": per_lifter.filter(pl.col("ms_levels") > 1).height,
-        "lifters_identifying": keep.height,
+        "lifters_ms_varies": fe_matching.height,
+        "lifters_identifying": as_specified.height,
         "lifters_multi_region": per_lifter.filter(pl.col("region_levels") > 1).height,
     }
-    return sample.join(keep.select("lifter_id"), on="lifter_id", how="semi"), stats
+    return (
+        sample.join(as_specified.select("lifter_id"), on="lifter_id", how="semi"),
+        sample.join(fe_matching.select("lifter_id"), on="lifter_id", how="semi"),
+        stats,
+    )
 
 
 def diagnostic_1(sample: pl.DataFrame) -> tuple[list[Fit], list[str]]:
-    restricted, stats = identifying_sample(sample)
+    as_specified, fe_matching, stats = identifying_sample(sample)
     fits = [
         fit_model(sample, "full cross-section", BASE_TERMS, FE_BASE),
-        fit_model(restricted, "restricted cross-section", BASE_TERMS, FE_BASE,
-                  note=">=2 meets and milestone status varies within lifter"),
+        fit_model(as_specified, "restricted (as specified)", BASE_TERMS, FE_BASE,
+                  note=">1 meet AND milestone status varies within lifter"),
+        fit_model(fe_matching, "restricted (FE-matching)", BASE_TERMS, FE_BASE,
+                  note="milestone status varies within lifter, any number of "
+                       "meets; this is the set FE_LIFTER actually absorbs over"),
         fit_model(sample, "lifter FE", BASE_TERMS, FE_LIFTER),
     ]
     fits = [f for f in fits if f]
@@ -151,19 +162,18 @@ def diagnostic_1(sample: pl.DataFrame) -> tuple[list[Fit], list[str]]:
         f"lifters in the headline sample        : {stats['lifters_total']:,}",
         f"  with more than one meet             : {stats['lifters_multi_meet']:,}",
         f"  with milestone status that varies   : {stats['lifters_ms_varies']:,}",
-        f"  both, i.e. identifying the FE       : {stats['lifters_identifying']:,}",
+        f"  both (restriction as specified)     : {stats['lifters_identifying']:,}",
         f"  competing in more than one region   : {stats['lifters_multi_region']:,}"
         "   <- all that identifies lb_region under lifter FE",
+        "",
+        "FE_LIFTER absorbs lifter_id, not lifter x meet, so a single-meet lifter "
+        "still identifies the estimate when milestone status varies across their "
+        "lifts within that meet. The FE-matching column is therefore the one that "
+        "corresponds to the fixed effect; both are reported.",
     ]
-    full, restr, fe = (f.row("lb_ms_x_region") for f in fits)
-    if restr and full and fe:
-        closer = "the restricted sample" if abs(restr["pp"] - fe["pp"]) < abs(
-            restr["pp"] - full["pp"]
-        ) else "the full sample"
-        lines.append(
-            f"Implies: restricting the cross-section to the identifying lifters moves "
-            f"the estimate to {restr['pp']:+.3f}pp, closer to {closer}."
-        )
+    for fit in fits:
+        lines.append(f"  {fit.name:28s} n={fit.n:>9,}  lifters={fit.n_clusters:>8,}  "
+                     f"{interval(fit, 'lb_ms_x_region')}")
     return fits, lines
 
 
