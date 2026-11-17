@@ -42,7 +42,7 @@ from econ_models import (
     fit_model,
     key_term,
     on_fake_milestone,
-    side_by_side,
+    stars,
     tidy,
 )
 
@@ -92,6 +92,75 @@ def interval(fit: Fit, term: str) -> str:
 def spans_zero(fit: Fit, term: str) -> bool:
     row = fit.row(term)
     return row is not None and row["ci_lo_pp"] <= 0 <= row["ci_hi_pp"]
+
+
+def diagnostics_table(fits: list[Fit], terms: list[str], title: str) -> str:
+    """Side-by-side table with a confidence interval under every coefficient.
+
+    econ_models.side_by_side prints a standard error and keeps its own format.
+    This is the diagnostics format, where an interval is wanted on every row,
+    nulls included. Units follow the outcome, so a jump_kg table reads in kg.
+    """
+    if not fits:
+        return f"{title}\n(no models)"
+
+    width = 24
+    pad = 28
+    units = {f.scale()[1] for f in fits}
+    unit_line = (
+        "effect sizes in percentage points of success probability"
+        if units == {"pp"}
+        else "effect sizes in kg"
+        if units == {"kg"}
+        else "effect sizes in each column's own units"
+    )
+    blank = " " * pad
+    header = blank + "".join(f"{f.name[: width - 2]:>{width}s}" for f in fits)
+    lines = [
+        title,
+        "=" * len(header),
+        unit_line,
+        "coefficient / (std error) / [95% CI]",
+        "",
+        header,
+        "-" * len(header),
+    ]
+
+    for term in terms:
+        if not any(term in f.terms for f in fits):
+            continue
+        coefs, ses, cis = f"{term:{pad}s}", blank, blank
+        for fit in fits:
+            row = fit.row(term)
+            if row is None:
+                coefs += " " * width
+                ses += " " * width
+                cis += " " * width
+                continue
+            coefs += f"{row['pp']:>{width - 4}.3f}{stars(row['p']):<4s}"
+            ses += f"{'(' + format(row['se_pp'], '.3f') + ')':>{width}s}"
+            interval_text = f"[{row['ci_lo_pp']:.3f}, {row['ci_hi_pp']:.3f}]"
+            cis += f"{interval_text:>{width}s}"
+        lines += [coefs, ses, cis]
+
+    lines.append("-" * len(header))
+    for label, get in (
+        ("observations", lambda f: f"{f.n:,}"),
+        ("lifters", lambda f: f"{f.n_clusters:,}"),
+        ("mean outcome", lambda f: f"{f.outcome_mean:.3f}"),
+    ):
+        lines.append(f"{label:{pad}s}" + "".join(f"{get(f):>{width}s}" for f in fits))
+
+    lines.append("")
+    lines.append("std errors clustered by lifter; * p<0.1, ** p<0.05, *** p<0.01")
+    for fit in fits:
+        if fit.note:
+            lines.append(f"  [{fit.name}] {fit.note}")
+        if fit.dropped:
+            lines.append(
+                f"  [{fit.name}] dropped, no variance: {', '.join(fit.dropped)}"
+            )
+    return "\n".join(lines)
 
 
 def assign_group(df: pl.DataFrame) -> pl.DataFrame:
@@ -210,63 +279,119 @@ def diagnostic_3(sample: pl.DataFrame) -> tuple[list[Fit], list[str], pl.DataFra
     on_lb_milestone describes the weight the lifter *chose*, so conditioning on
     it conditions on an outcome of the decision. The distance from the second
     attempt to the next milestone is fixed before the third attempt is picked.
-    Second-attempt weight is controlled flexibly, as absorbed 2.5 kg bins,
-    rather than with a functional form.
+
+    The per-group version of this is close to unidentified. dist_to_next_*_ms
+    is a deterministic function of prev_weight_kg, so absorbing prev-weight in
+    2.5 kg bins fixes the distance bin for 98.1% of attempts; only the ~1.9% of
+    second attempts that sit off the 2.5 kg grid carry any variation, which is
+    why those intervals are enormous. They are kept in the CSV, labelled.
+
+    The pooled model is what the text reports. Prev-weight bins are absorbed
+    for everyone and the terms are distance bin x region, plus distance bin x
+    pound-loaded inside the US. Distance main effects are deliberately absent:
+    they are exactly what the prev-weight bins absorb. The comparison is
+    between regions at the *same* second-attempt weight, which is identified
+    because both regions appear within a prev-weight bin.
     """
     rows, fits = [], []
-    for dist_col, grid in (("dist_to_next_lb_ms", "pound"), ("dist_to_next_kg_ms", "kilo")):
-        for group, label in GROUPS:
-            sub = sample.filter(
-                (pl.col("group") == group)
-                & pl.col(dist_col).is_not_null()
-                & (pl.col(dist_col) <= MAX_DIST_KG)
-            ).with_columns(
-                binned(pl.col(dist_col), DIST_BIN_KG).alias("dist_bin"),
-                binned(pl.col("prev_weight_kg"), PREV_BIN_KG).alias("prev_bin"),
+
+    for dist_col, grid in (
+        ("dist_to_next_lb_ms", "pound"),
+        ("dist_to_next_kg_ms", "kilo"),
+    ):
+        pooled = sample.filter(
+            pl.col(dist_col).is_not_null()
+            & (pl.col(dist_col) <= MAX_DIST_KG)
+            & pl.col("group").is_not_null()
+        ).with_columns(
+            binned(pl.col(dist_col), DIST_BIN_KG).alias("dist_bin"),
+            binned(pl.col("prev_weight_kg"), PREV_BIN_KG).alias("prev_bin"),
+            (pl.col("group") == "us_lb").cast(pl.Int8).alias("us_pound_loaded"),
+        )
+        if pooled.height < 1000:
+            continue
+
+        # The omitted category is the most populated bin, not an edge one: the
+        # previous reference was the 25 kg bin with under 2k attempts.
+        counts = pooled.group_by("dist_bin").agg(pl.len().alias("n")).sort("n", descending=True)
+        reference = float(counts["dist_bin"][0])
+        levels = [lv for lv in sorted(pooled["dist_bin"].unique().to_list())
+                  if lv != reference]
+
+        work = pooled
+        region_terms, us_terms = [], []
+        for lv in levels:
+            region_name, us_name = f"dist_{lv:g}_x_region", f"dist_{lv:g}_x_uslb"
+            on_bin = (pl.col("dist_bin") == lv).cast(pl.Int8)
+            work = work.with_columns(
+                (on_bin * pl.col("lb_region")).alias(region_name),
+                (on_bin * pl.col("us_pound_loaded")).alias(us_name),
             )
+            region_terms.append(region_name)
+            us_terms.append(us_name)
+
+        for outcome in ("jump_kg", "success"):
+            fit = fit_model(
+                work,
+                f"[exploratory] pooled / {grid} grid / {outcome}",
+                [*region_terms, *us_terms],
+                [*FE_BASE, "prev_bin"],
+                outcome=outcome,
+                note="EXPLORATORY, POST HOC; distance from the second attempt; "
+                     "prev-weight absorbed in 2.5 kg bins; terms are distance bin "
+                     "x lb_region and x US pound-loaded, so each coefficient is a "
+                     "region contrast at the same second-attempt weight; distance "
+                     "main effects are absorbed by the prev-weight bins; omitted "
+                     f"category is the {reference:g} kg bin "
+                     f"(n={int(counts['n'][0]):,}, the most populated)",
+            )
+            if fit is None:
+                continue
+            fits.append(fit)
+            for lv in levels:
+                row = fit.row(f"dist_{lv:g}_x_region")
+                if row:
+                    rows.append({
+                        "grid": grid, "group": "lb_region contrast",
+                        "outcome": outcome, "dist_bin": lv, "coef": row["coef"],
+                        "lo": row["coef"] - 1.96 * row["se_pp"] / (
+                            100.0 if outcome == "success" else 1.0),
+                        "hi": row["coef"] + 1.96 * row["se_pp"] / (
+                            100.0 if outcome == "success" else 1.0),
+                        "n": fit.n,
+                    })
+
+        # The per-group fits stay in the CSV, labelled for what identifies them.
+        for group, label in GROUPS:
+            sub = work.filter(pl.col("group") == group)
             if sub.height < 1000:
                 continue
-
+            levels_g = [lv for lv in sorted(sub["dist_bin"].unique().to_list())
+                        if lv != reference]
+            terms_g, sub_work = [], sub
+            for lv in levels_g:
+                name = f"dist_{lv:g}"
+                sub_work = sub_work.with_columns(
+                    (pl.col("dist_bin") == lv).cast(pl.Int8).alias(name)
+                )
+                terms_g.append(name)
             for outcome in ("jump_kg", "success"):
-                # The profile across distance bins, each against the far bin.
-                levels = sorted(sub["dist_bin"].unique().to_list())
-                terms = []
-                work = sub
-                for lv in levels[:-1]:
-                    name = f"dist_{lv:g}"
-                    work = work.with_columns(
-                        (pl.col("dist_bin") == lv).cast(pl.Int8).alias(name)
-                    )
-                    terms.append(name)
-
                 fit = fit_model(
-                    work,
+                    sub_work,
                     f"[exploratory] {label} / {grid} grid / {outcome}",
-                    terms,
+                    terms_g,
                     [*FE_BASE, "prev_bin"],
                     outcome=outcome,
-                    note="EXPLORATORY, POST HOC; distance measured from the second "
-                         "attempt; second-attempt weight absorbed in 2.5 kg bins; "
-                         f"omitted category is the {levels[-1]:g} kg bin",
+                    note="EXPLORATORY, POST HOC; CSV only. Identified only off "
+                         "the ~1.9% of second attempts that sit off the 2.5 kg "
+                         "grid, because prev-weight bins otherwise fix the "
+                         f"distance bin; omitted category is the {reference:g} kg bin",
                 )
-                if fit is None:
-                    continue
-                fits.append(fit)
-                for lv in levels[:-1]:
-                    row = fit.row(f"dist_{lv:g}")
-                    if row:
-                        rows.append({
-                            "grid": grid, "group": group, "outcome": outcome,
-                            "dist_bin": lv, "coef": row["coef"],
-                            "lo": row["coef"] - 1.96 * row["se_pp"] / 100,
-                            "hi": row["coef"] + 1.96 * row["se_pp"] / 100,
-                            "n": fit.n,
-                        })
+                if fit:
+                    fits.append(fit)
 
     profile = pl.DataFrame(rows) if rows else pl.DataFrame()
-    lines = ["Implies: exploratory and post hoc; the profiles are in "
-             "diagnostics_exploratory_profile.png and the CSV, not summarised here."]
-    return fits, lines, profile
+    return fits, [], profile
 
 
 # --- 4. the placebo family --------------------------------------------------
@@ -320,6 +445,15 @@ def diagnostic_4(sample: pl.DataFrame) -> tuple[list[Fit], list[str], pl.DataFra
     if family.height:
         fake = family.filter(~pl.col("is_true"))
         n_sig = int((fake["p"] < 0.05).sum())
+        lines.append(
+            "NOTE: these are not independent placebos. Loadable pound milestones "
+            "are 22.5 kg apart in kilo meets, so offsets 0 through 20 kg in 2.5 kg "
+            "steps are a scan across a single cycle rather than eight separate "
+            "draws. +15 kg sits 7.5 kg below the next REAL milestone and +20 kg "
+            "sits 2.5 kg below it, so the largest offsets are the ones closest to "
+            "a true milestone. The offsets were left as specified."
+        )
+        lines.append("")
         lines.append(
             f"Implies: {n_sig} of {fake.height} placebo offsets are significant at 5% "
             f"(range {fake['pp'].min():+.3f}pp to {fake['pp'].max():+.3f}pp); "
@@ -420,6 +554,24 @@ def diagnostic_5(sample: pl.DataFrame) -> tuple[list[Fit], list[str]]:
                      f"{fit.row('running_x_above')['coef']:+.4f} kg/kg  "
                      f"[{fit.row('running_x_above')['ci_lo_pp'] / 100:+.4f}, "
                      f"{fit.row('running_x_above')['ci_hi_pp'] / 100:+.4f}]")
+    for grid, adder in (("pound", add_running_variable), ("kilo", add_kg_running_variable)):
+        framed = adder(sample).filter(pl.col("running_kg").is_not_null())
+        inside = framed.filter(
+            pl.col("running_kg").abs() <= ASYMMETRY_WINDOW_KG
+        ).height
+        lines.append(
+            f"  window coverage, {grid:5s} grid: {inside / framed.height:6.1%} of "
+            f"attempts inside +/-{ASYMMETRY_WINDOW_KG:g} kg "
+            f"(max |distance| {framed['running_kg'].abs().max():.2f} kg)"
+        )
+    lines.append(
+        "NOTE: the two sets of rows are not comparable. Kilo milestones are 10 kg "
+        "apart, so no attempt is ever more than 5 kg from one and the +/-6 kg "
+        "window covers the whole cycle. Pound milestones are 22.5 kg apart, so "
+        "the same window covers about half of one. The window was left as "
+        "specified."
+    )
+    lines.append("")
     lines.append("Implies: the econ asymmetry result compared both regions against "
                  "the pound grid; the own/other split above separates grid from region.")
     return fits, lines
@@ -480,42 +632,57 @@ def plot_placebo_family(family: pl.DataFrame) -> Path | None:
 
 
 def plot_exploratory_profile(profile: pl.DataFrame) -> Path | None:
+    """The pooled region contrast, both grids, both outcomes.
+
+    Each point is the difference between lb-region and kg-region attempts whose
+    second attempt sat the same distance below a milestone, at the same
+    second-attempt weight. Zero means the two regions behaved alike there.
+    """
     if profile.height == 0:
         return None
-    sub = profile.filter(pl.col("grid") == "pound")
-    if sub.height == 0:
+
+    import matplotlib.pyplot as plt
+
+    grids = [g for g in ("pound", "kilo") if
+             profile.filter(pl.col("grid") == g).height]
+    outcomes = (("jump_kg", "jump difference (kg)"), ("success", "success difference (pp)"))
+    if not grids:
         return None
 
-    colours = {"us_lb": ps.FOUND, "us_kg": ps.BAR, "kilo": ps.PRESPEC_KG}
-    fig, axes = ps.new_figure(2, (11, 7.6))
-    for ax, outcome, ylab in zip(axes, ("jump_kg", "success"),
-                                 ("mean jump (kg)", "success (pp)")):
-        cell_any = False
-        for group, label in GROUPS:
-            cell = sub.filter(
-                (pl.col("group") == group) & (pl.col("outcome") == outcome)
+    fig, axes = plt.subplots(2, len(grids), figsize=(6.2 * len(grids), 7.8),
+                             squeeze=False)
+    fig.patch.set_facecolor(ps.SURFACE)
+
+    for col, grid in enumerate(grids):
+        for rowi, (outcome, ylab) in enumerate(outcomes):
+            ax = axes[rowi][col]
+            ax.set_facecolor(ps.SURFACE)
+            cell = profile.filter(
+                (pl.col("grid") == grid) & (pl.col("outcome") == outcome)
             ).sort("dist_bin")
             if cell.height == 0:
+                ax.set_axis_off()
                 continue
-            cell_any = True
             scale = 100.0 if outcome == "success" else 1.0
             x = cell["dist_bin"].to_numpy()
-            ax.fill_between(x, cell["lo"].to_numpy() * scale, cell["hi"].to_numpy() * scale,
-                            color=colours[group], alpha=0.16, linewidth=0)
-            ax.plot(x, cell["coef"].to_numpy() * scale, color=colours[group],
+            ax.fill_between(x, cell["lo"].to_numpy() * scale,
+                            cell["hi"].to_numpy() * scale,
+                            color=ps.BAR, alpha=0.18, linewidth=0)
+            ax.plot(x, cell["coef"].to_numpy() * scale, color=ps.BAR,
                     linewidth=2.0, marker="o", markersize=4)
-        ax.axhline(0, color=ps.AXIS, linewidth=1.0)
-        ps.style_axes(
-            ax,
-            xlabel="kg from the second attempt to the next pound milestone",
-            ylabel=ylab,
-            title=f"outcome: {outcome}",
-        )
-        if not cell_any:
-            ax.set_axis_off()
+            ax.axhline(0, color=ps.AXIS, linewidth=1.2)
+            ps.style_axes(
+                ax,
+                xlabel=f"kg from the second attempt to the next {grid} milestone",
+                ylabel=ylab,
+                title=f"{grid} grid  -  outcome: {outcome}",
+            )
 
-    ps.series_legend(fig, [(colours[g], lab) for g, lab in GROUPS])
-    ps.suptitle(fig, "EXPLORATORY, POST HOC - not conditioning on the chosen weight")
+    ps.suptitle(
+        fig,
+        "EXPLORATORY, POST HOC - lb-region minus kg-region, at the same "
+        "second-attempt weight",
+    )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     return ps.save(fig, FIG_DIR / "diagnostics_exploratory_profile.png")
 
@@ -539,11 +706,12 @@ def main() -> int:
     print(f"\nsample: {sample.height:,} attempts, "
           f"{sample['lifter_id'].n_unique():,} lifters\n")
 
+    NEWLINE = chr(10)
     sections, all_fits = [], []
 
     def section(num, title, fits, lines, terms):
         all_fits.extend(fits)
-        body = side_by_side(fits, terms, f"{num}. {title}") if fits else "(no models)"
+        body = diagnostics_table(fits, terms, f"{num}. {title}")
         sections.append(body + "\n\n" + "\n".join(lines))
         print(f"\n--- {num}. {title} ---")
         for line in lines:
@@ -558,10 +726,30 @@ def main() -> int:
         fits, lines = diagnostic_2(sample)
         section(2, "WITH AND WITHOUT THE JUMP CONTROL", fits, lines, BASE_TERMS)
     if 3 in wanted:
-        fits, lines, profile = diagnostic_3(sample)
-        section(3, "EXPLORATORY, POST HOC: NOT CONDITIONING ON THE CHOSEN WEIGHT",
-                [], lines, [])
+        fits, _, profile = diagnostic_3(sample)
+        pooled = [f for f in fits if "pooled" in f.name]
+        lines = []
+        for fit in pooled:
+            shown = [t for t in fit.terms if t.endswith("_x_region")]
+            best = max(shown, key=lambda t: abs(fit.row(t)["pp"] or 0.0), default=None)
+            nulls = sum(spans_zero(fit, t) for t in shown)
+            if best:
+                lines.append(
+                    f"  {fit.name}: {len(shown)} distance bins, {nulls} with an "
+                    f"interval covering zero; largest contrast at "
+                    f"{best.split('_')[1]} kg, {interval(fit, best)}"
+                )
+        body = NEWLINE.join(
+            diagnostics_table(
+                [f], [t for t in f.terms], f"3. {f.name.upper()}"
+            )
+            for f in pooled
+        )
         all_fits.extend(fits)
+        sections.append(body + NEWLINE + NEWLINE + NEWLINE.join(lines))
+        print(NEWLINE + "--- 3. EXPLORATORY, POST HOC: NOT CONDITIONING ON THE CHOSEN WEIGHT ---")
+        for line in lines:
+            print(" ", line)
     if 4 in wanted:
         fits, lines, family = diagnostic_4(sample)
         section(4, "THE PLACEBO FAMILY", fits,

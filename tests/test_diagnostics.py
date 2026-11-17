@@ -279,3 +279,84 @@ def test_fe_matching_restriction_is_the_looser_one():
     assert set(as_specified["lifter_id"].unique()) <= set(
         fe_matching["lifter_id"].unique()
     )
+
+
+# --- reporting format -------------------------------------------------------
+
+
+def test_diagnostics_table_prints_an_interval_for_every_coefficient():
+    fit = em.fit_model(sample(), "m", em.BASE_TERMS, em.FE_BASE)
+    text = dg.diagnostics_table([fit], em.BASE_TERMS, "T")
+    assert "[95% CI]" in text
+    # one bracketed interval per surviving term
+    assert text.count("[") >= len(fit.terms)
+
+
+def test_diagnostics_table_labels_kg_outcomes_as_kg():
+    base = sample().with_columns(
+        (pl.col("running_kg") if "running_kg" in sample().columns else pl.lit(1.0))
+        .alias("_unused")
+    )
+    fit = em.fit_model(base, "jump model", ["jump_pct"], em.FE_BASE, outcome="jump_kg")
+    text = dg.diagnostics_table([fit], ["jump_pct"], "T")
+    assert "effect sizes in kg" in text
+    assert "percentage points" not in text
+
+
+def test_diagnostics_table_handles_no_models():
+    assert "(no models)" in dg.diagnostics_table([], ["a"], "T")
+
+
+def test_econ_report_format_is_left_alone():
+    """side_by_side keeps its standard-error format; CIs are diagnostics only."""
+    fit = em.fit_model(sample(), "m", em.BASE_TERMS, em.FE_BASE)
+    assert "[95% CI]" not in em.side_by_side([fit], em.BASE_TERMS, "T")
+
+
+# --- pooled exploratory specification ---------------------------------------
+
+
+def test_pooled_exploratory_uses_region_interactions_not_main_effects():
+    """Distance main effects are what the prev-weight bins absorb, so the
+    pooled model carries only the interactions."""
+    fits, _, _ = dg.diagnostic_3(sample(n=6000))
+    pooled = [f for f in fits if "pooled" in f.name]
+    assert pooled
+    for fit in pooled:
+        assert all(t.endswith("_x_region") or t.endswith("_x_uslb") for t in fit.terms)
+
+
+def test_pooled_exploratory_omits_the_most_populated_bin():
+    fits, _, _ = dg.diagnostic_3(sample(n=6000))
+    pooled = [f for f in fits if "pooled" in f.name]
+    assert pooled
+    assert "the most populated" in pooled[0].note
+
+
+def test_per_group_fits_are_labelled_as_thinly_identified():
+    fits, _, _ = dg.diagnostic_3(sample(n=6000))
+    per_group = [f for f in fits if "pooled" not in f.name]
+    assert per_group
+    for fit in per_group:
+        assert "off the 2.5 kg grid" in fit.note
+
+
+def test_exploratory_label_is_on_every_fit():
+    fits, _, _ = dg.diagnostic_3(sample(n=6000))
+    assert fits
+    for fit in fits:
+        assert fit.name.startswith("[exploratory]")
+        assert "EXPLORATORY, POST HOC" in fit.note
+
+
+def test_profile_covers_both_grids():
+    _, _, profile = dg.diagnostic_3(sample(n=6000))
+    assert sorted(profile["grid"].unique().to_list()) == ["kilo", "pound"]
+
+
+def test_every_csv_row_carries_an_interval():
+    fits, _, _ = dg.diagnostic_3(sample(n=6000))
+    out = em.tidy(fits)
+    assert out["ci_lo_pp"].null_count() == 0
+    assert out["ci_hi_pp"].null_count() == 0
+    assert {"outcome", "unit"} <= set(out.columns)
