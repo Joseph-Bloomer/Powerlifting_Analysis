@@ -1,0 +1,103 @@
+HEADLINE AND SECONDARY ANALYSES
+========================================================================================================================================
+effect sizes in percentage points of success probability
+
+                              headline (base FE)  headline + lifter FE  US pound-loaded only   US kilo-loaded only  discovered milestone
+----------------------------------------------------------------------------------------------------------------------------------------
+jump_pct                              -0.032**              -0.398***             -0.241**              -0.215***             -0.030    
+                                         (0.015)               (0.019)               (0.106)               (0.020)               (0.020)
+on_lb_milestone                       -0.030                 0.015                -1.589                -0.664***                       
+                                         (0.166)               (0.194)               (1.037)               (0.142)                      
+on_kg_milestone                        1.325***              2.228***                                    0.759***                       
+                                         (0.109)               (0.128)                                     (0.115)                      
+lb_region                              3.493***              1.498**                                                           3.068*** 
+                                         (0.122)               (0.604)                                                           (0.141)
+lb_ms_x_region                        -0.724***             -0.222                                                                      
+                                         (0.218)               (0.254)                                                                  
+kg_ms_x_region                        -0.566***             -1.291***                                                                   
+                                         (0.158)               (0.185)                                                                  
+prior_meets                           -0.584***             -1.085***             -0.983***             -0.892***             -0.633*** 
+                                         (0.023)               (0.046)               (0.317)               (0.039)               (0.027)
+would_be_pr                           -6.936***             -6.955***             -5.157***             -6.519***             -7.050*** 
+                                         (0.129)               (0.147)               (1.680)               (0.183)               (0.177)
+on_discovered_milestone                                                                                                       -0.104    
+                                                                                                                                 (0.455)
+disc_ms_x_region                                                                                                              -1.907*** 
+                                                                                                                                 (0.539)
+----------------------------------------------------------------------------------------------------------------------------------------
+observations                           1,812,850             1,812,850                19,388               896,354               916,830
+lifters                                  296,596               296,596                 6,367               145,927               202,550
+mean outcome                               0.612                 0.612                 0.598                 0.628                 0.612
+
+std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
+  [headline (base FE)] dropped, no variance: no_history
+  [headline + lifter FE] dropped, no variance: no_history
+  [US pound-loaded only] lb_region is constant here, so its interactions drop and the milestone main effect carries the estimate
+  [US pound-loaded only] dropped, no variance: on_kg_milestone, lb_region, kg_ms_x_region, no_history, lb_ms_x_region
+  [US kilo-loaded only] lb_region is constant here, so its interactions drop and the milestone main effect carries the estimate
+  [US kilo-loaded only] dropped, no variance: lb_region, no_history, lb_ms_x_region, kg_ms_x_region
+  [discovered milestones (test half)] milestones found in the discovery half; this is the only outcome test on them, run on meets discovery never saw
+  [discovered milestones (test half)] dropped, no variance: no_history
+
+
+ROBUSTNESS
+==============================================================================================================================================================
+effect sizes in percentage points of success probability
+
+                                    lift = squat          lift = bench       lift = deadlift           tested only  placebo (+12.5 kg fa  logit (25% lifter sa
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+jump_pct                               0.389***             -0.944***              0.594***             -0.025                -0.035**               0.046    
+                                         (0.023)               (0.025)               (0.023)               (0.016)               (0.015)               (0.029)
+on_lb_milestone                       -0.124                 0.283                -0.370                 0.039                                      -0.118    
+                                         (0.274)               (0.300)               (0.277)               (0.178)                                     (0.328)
+on_kg_milestone                       -0.469***              0.199                 0.492***              1.408***              1.332***              1.408*** 
+                                         (0.177)               (0.201)               (0.178)               (0.118)               (0.109)               (0.215)
+lb_region                              2.948***              0.620***              6.222***              3.461***              3.316***              3.031*** 
+                                         (0.184)               (0.195)               (0.188)               (0.137)               (0.121)               (0.217)
+lb_ms_x_region                        -1.556***             -1.795***             -2.349***             -0.801***                                   -0.413    
+                                         (0.359)               (0.407)               (0.352)               (0.236)                                     (0.434)
+kg_ms_x_region                         0.614**               0.424                 0.073                -0.697***             -0.571***             -0.515    
+                                         (0.258)               (0.291)               (0.256)               (0.172)               (0.158)               (0.319)
+prior_meets                           -0.231***              0.099***             -1.578***             -0.545***             -0.585***             -0.499*** 
+                                         (0.027)               (0.030)               (0.034)               (0.024)               (0.023)               (0.039)
+would_be_pr                           -4.500***             -7.649***             -8.674***             -6.834***             -6.936***             -7.091*** 
+                                         (0.196)               (0.219)               (0.206)               (0.138)               (0.129)               (0.263)
+on_fake_milestone                                                                                                             -0.289*                         
+                                                                                                                                 (0.168)                      
+fake_ms_x_region                                                                                                               0.649***                       
+                                                                                                                                 (0.237)                      
+--------------------------------------------------------------------------------------------------------------------------------------------------------------
+observations                             603,102               579,059               630,689             1,534,099             1,812,850               453,369
+lifters                                  265,905               259,274               276,953               247,978               296,596                74,149
+mean outcome                               0.683                 0.499                 0.648                 0.613                 0.612                 0.612
+
+std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
+  [lift = squat] dropped, no variance: no_history
+  [lift = bench] dropped, no variance: no_history
+  [lift = deadlift] dropped, no variance: no_history
+  [tested only] dropped, no variance: no_history
+  [placebo (+12.5 kg fake milestones)] should show no effect if the design is sound
+  [placebo (+12.5 kg fake milestones)] dropped, no variance: no_history
+  [logit (25% lifter sample, AME)] average marginal effects; Sex and year dummies only (logit cannot absorb the lifter or weight-class effects)
+
+
+ASYMMETRY AROUND A POUND MILESTONE (outcome: jump_kg, in kg)
+======================================================================
+effect sizes in percentage points of success probability
+
+                            asymmetry: lb region  asymmetry: kg region
+----------------------------------------------------------------------
+running_kg                             3.467***             -1.151*** 
+                                         (0.376)               (0.366)
+above                                -34.079***             -1.804    
+                                         (3.150)               (3.066)
+running_x_above                        0.789                 2.199*** 
+                                         (0.823)               (0.802)
+----------------------------------------------------------------------
+observations                             505,989               497,991
+lifters                                  137,720               135,638
+mean outcome                               7.651                 7.333
+
+std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
+  [asymmetry: lb region] jump_kg on signed kg to the nearest 50 lb milestone, |window| <= 6 kg
+  [asymmetry: kg region] jump_kg on signed kg to the nearest 50 lb milestone, |window| <= 6 kg
