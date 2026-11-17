@@ -1,6 +1,6 @@
 PY = uv run python
 
-.PHONY: ingest clean features describe model ml milestones all test
+.PHONY: ingest clean features discover describe model ml all test
 
 ingest:
 	$(PY) src/ingest.py
@@ -11,6 +11,9 @@ clean:
 features:
 	$(PY) src/features.py
 
+discover:
+	$(PY) src/discover.py
+
 describe:
 	$(PY) src/describe.py
 
@@ -20,11 +23,7 @@ model:
 ml:
 	$(PY) src/ml.py
 
-# Reference tool, not a pipeline stage: writes references/milestones_detected.csv
-milestones:
-	$(PY) src/detect_milestones.py
-
-all: ingest clean features describe model ml
+all: ingest clean features discover describe model ml
 
 test:
 	uv run pytest
