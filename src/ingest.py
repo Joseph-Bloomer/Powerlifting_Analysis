@@ -133,6 +133,11 @@ def non_null_share_report(lf: pl.LazyFrame, by: pl.Expr, label: str) -> pl.DataF
 
 
 def print_report(parquet_path: Path) -> None:
+    # Polars draws tables with box-drawing characters, which the default
+    # Windows console encoding (cp1252) cannot encode.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     lf = pl.scan_parquet(parquet_path)
     schema = lf.collect_schema()
     n_rows = lf.select(pl.len()).collect().item()
