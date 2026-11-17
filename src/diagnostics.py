@@ -79,19 +79,41 @@ def use_utf8_stdout() -> None:
 
 
 def interval(fit: Fit, term: str) -> str:
-    """A coefficient with its interval, in percentage points."""
+    """A coefficient with its interval, in the outcome's own units.
+
+    The suffix follows Fit.scale(), so a jump_kg coefficient reads in kg. It
+    was a hard-coded "pp", which labelled the exploratory jump-size summaries
+    as percentage points when the numbers underneath were kilos.
+    """
     row = fit.row(term)
     if row is None:
         return "not estimated"
+    unit = fit.scale()[1]
+    suffix = "pp" if unit == "pp" else f" {unit}"
     return (
-        f"{row['pp']:+.3f}pp  95% CI [{row['ci_lo_pp']:+.3f}, {row['ci_hi_pp']:+.3f}]"
-        f"  p={row['p']:.3g}"
+        f"{row['pp']:+.3f}{suffix}  95% CI [{row['ci_lo_pp']:+.3f}, "
+        f"{row['ci_hi_pp']:+.3f}]  p={row['p']:.3g}"
     )
 
 
 def spans_zero(fit: Fit, term: str) -> bool:
     row = fit.row(term)
     return row is not None and row["ci_lo_pp"] <= 0 <= row["ci_hi_pp"]
+
+
+def slope_line(fit: Fit) -> str:
+    """One asymmetry row: the interaction slope and its interval, both kg/kg.
+
+    A function rather than an inline f-string so a test can check the printed
+    interval brackets the printed coefficient. A stale /100 here once divided
+    the bounds alone, printing intervals too narrow to contain their estimate.
+    """
+    row = fit.row("running_x_above")
+    return (
+        f"  {fit.name:46s} slope difference "
+        f"{row['coef']:+.4f} kg/kg  "
+        f"[{row['ci_lo_pp']:+.4f}, {row['ci_hi_pp']:+.4f}]"
+    )
 
 
 def diagnostics_table(fits: list[Fit], terms: list[str], title: str) -> str:
@@ -549,11 +571,7 @@ def diagnostic_5(sample: pl.DataFrame) -> tuple[list[Fit], list[str]]:
             if fit:
                 fits.append(fit)
 
-    for fit in fits:
-        lines.append(f"  {fit.name:46s} slope difference "
-                     f"{fit.row('running_x_above')['coef']:+.4f} kg/kg  "
-                     f"[{fit.row('running_x_above')['ci_lo_pp'] / 100:+.4f}, "
-                     f"{fit.row('running_x_above')['ci_hi_pp'] / 100:+.4f}]")
+    lines.extend(slope_line(fit) for fit in fits)
     for grid, adder in (("pound", add_running_variable), ("kilo", add_kg_running_variable)):
         framed = adder(sample).filter(pl.col("running_kg").is_not_null())
         inside = framed.filter(

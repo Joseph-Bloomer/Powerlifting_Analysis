@@ -360,3 +360,45 @@ def test_every_csv_row_carries_an_interval():
     assert out["ci_lo_pp"].null_count() == 0
     assert out["ci_hi_pp"].null_count() == 0
     assert {"outcome", "unit"} <= set(out.columns)
+
+
+def test_interval_labels_the_unit_from_the_outcome():
+    """A jump_kg coefficient is kilos, not percentage points.
+
+    interval() hard-coded "pp", so the exploratory jump-size summaries read
+    "+1.605pp" over numbers that were kg.
+    """
+    pp_fit = em.Fit("s", ["a"], np.array([1.0]), np.array([0.1]), 10, 5, 0.5,
+                    outcome="success")
+    kg_fit = em.Fit("j", ["a"], np.array([1.0]), np.array([0.1]), 10, 5, 7.6,
+                    outcome="jump_kg")
+    assert "pp" in dg.interval(pp_fit, "a")
+    assert " kg" in dg.interval(kg_fit, "a")
+    assert "pp" not in dg.interval(kg_fit, "a")
+
+
+def test_interval_brackets_its_own_coefficient():
+    for outcome in ("success", "jump_kg"):
+        fit = em.Fit("f", ["a"], np.array([0.0079]), np.array([0.0082]),
+                     10, 5, 0.5, outcome=outcome)
+        text = dg.interval(fit, "a")
+        coef = float(text.split()[0].rstrip("pkg "))
+        lo, hi = (float(v) for v in
+                  text.split("[")[1].split("]")[0].split(","))
+        assert lo <= coef <= hi, text
+
+
+def test_asymmetry_line_interval_contains_the_point_estimate():
+    """The regression guard for the stale /100 in the asymmetry rows.
+
+    coef printed raw while the bounds were divided by 100, so the line read
+    "+0.1193 kg/kg [+0.0011, +0.0013]" - an interval excluding its estimate.
+    """
+    fit = em.Fit("lb region vs kilo milestones (other's)", ["running_x_above"],
+                 np.array([0.11933]), np.array([0.0066]), 10, 5, 7.7,
+                 outcome="jump_kg")
+    line = dg.slope_line(fit)
+    coef = float(line.split("difference")[1].split("kg/kg")[0])
+    lo, hi = (float(v) for v in line.split("[")[1].split("]")[0].split(","))
+    assert lo <= coef <= hi, line
+    assert hi - lo > 0.01, f"interval implausibly narrow: {line}"
