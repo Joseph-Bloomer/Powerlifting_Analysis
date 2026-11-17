@@ -1,6 +1,6 @@
 PY = uv run python
 
-.PHONY: ingest clean features discover describe model ml all test
+.PHONY: ingest clean features discover describe model ml diagnostics all test
 
 ingest:
 	$(PY) src/ingest.py
@@ -22,6 +22,10 @@ model:
 
 ml:
 	$(PY) src/ml.py
+
+# Not a pipeline stage: diagnostics on the econ results, run on demand.
+diagnostics:
+	$(PY) src/diagnostics.py
 
 all: ingest clean features discover describe model ml
 

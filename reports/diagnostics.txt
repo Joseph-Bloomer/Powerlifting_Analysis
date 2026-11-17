@@ -1,0 +1,189 @@
+1. THE FIXED-EFFECTS IDENTIFYING SAMPLE
+============================================================================================
+effect sizes in percentage points of success probability
+
+                              full cross-section  restricted cross-sec             lifter FE
+--------------------------------------------------------------------------------------------
+jump_pct                              -0.032**               0.009                -0.398*** 
+                                         (0.015)               (0.021)               (0.019)
+on_lb_milestone                       -0.030                -0.571***              0.015    
+                                         (0.166)               (0.190)               (0.194)
+on_kg_milestone                        1.325***              1.420***              2.228*** 
+                                         (0.109)               (0.145)               (0.128)
+lb_region                              3.493***              2.872***              1.498**  
+                                         (0.122)               (0.168)               (0.604)
+lb_ms_x_region                        -0.724***             -0.572**              -0.222    
+                                         (0.218)               (0.248)               (0.254)
+kg_ms_x_region                        -0.566***             -0.646***             -1.291*** 
+                                         (0.158)               (0.203)               (0.185)
+prior_meets                           -0.584***             -0.542***             -1.085*** 
+                                         (0.023)               (0.026)               (0.046)
+would_be_pr                           -6.936***             -7.045***             -6.955*** 
+                                         (0.129)               (0.144)               (0.147)
+--------------------------------------------------------------------------------------------
+observations                           1,812,850             1,104,738             1,812,850
+lifters                                  296,596                96,354               296,596
+mean outcome                               0.612                 0.614                 0.612
+
+std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
+  [full cross-section] dropped, no variance: no_history
+  [restricted cross-section] >=2 meets and milestone status varies within lifter
+  [restricted cross-section] dropped, no variance: no_history
+  [lifter FE] dropped, no variance: no_history
+
+lifters in the headline sample        : 296,596
+  with more than one meet             : 146,011
+  with milestone status that varies   : 136,385
+  both, i.e. identifying the FE       : 96,354
+  competing in more than one region   : 3,603   <- all that identifies lb_region under lifter FE
+Implies: restricting the cross-section to the identifying lifters moves the estimate to -0.572pp, closer to the full sample.
+
+
+2. WITH AND WITHOUT THE JUMP CONTROL
+======================================================================
+effect sizes in percentage points of success probability
+
+                                   with jump_pct      without jump_pct
+----------------------------------------------------------------------
+jump_pct                              -0.032**                        
+                                         (0.015)                      
+on_lb_milestone                       -0.030                -0.030    
+                                         (0.166)               (0.166)
+on_kg_milestone                        1.325***              1.301*** 
+                                         (0.109)               (0.109)
+lb_region                              3.493***              3.477*** 
+                                         (0.122)               (0.122)
+lb_ms_x_region                        -0.724***             -0.736*** 
+                                         (0.218)               (0.217)
+kg_ms_x_region                        -0.566***             -0.544*** 
+                                         (0.158)               (0.158)
+prior_meets                           -0.584***             -0.580*** 
+                                         (0.023)               (0.022)
+would_be_pr                           -6.936***             -6.939*** 
+                                         (0.129)               (0.129)
+----------------------------------------------------------------------
+observations                           1,812,850             1,812,850
+lifters                                  296,596               296,596
+mean outcome                               0.612                 0.612
+
+std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
+  [with jump_pct] dropped, no variance: no_history
+  [without jump_pct] jump_pct is plausibly a mediator: a milestone changes the jump a lifter picks
+  [without jump_pct] dropped, no variance: no_history
+
+Implies: dropping the jump control moves the coefficient from -0.724pp to -0.736pp, a change of -0.012pp.
+
+
+(no models)
+
+Implies: exploratory and post hoc; the profiles are in diagnostics_exploratory_profile.png and the CSV, not summarised here.
+
+
+4. THE PLACEBO FAMILY
+================================================================================================================================================================================================================================
+effect sizes in percentage points of success probability
+
+                            offset 0 (true miles  placebo +2.5 kg / +5  placebo +5 kg / +10   placebo +7.5 kg / +1  placebo +10 kg / +20  placebo +12.5 kg / +  placebo +15 kg / +30  placebo +17.5 kg / +  placebo +20 kg / +40
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+on_fake_milestone                                            0.315*               -0.129                -0.187                 0.166                -0.275                 0.868***             -0.193                 0.122    
+                                                               (0.168)               (0.167)               (0.169)               (0.167)               (0.168)               (0.167)               (0.165)               (0.168)
+fake_ms_x_region                                             0.816***              0.900***              0.917***              0.586**               0.693***             -1.066***             -0.125                -2.035*** 
+                                                               (0.236)               (0.231)               (0.237)               (0.232)               (0.235)               (0.237)               (0.234)               (0.250)
+lb_ms_x_region                        -0.724***                                                                                                                                                                                 
+                                         (0.218)                                                                                                                                                                                
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+observations                           1,812,850             1,812,850             1,812,850             1,812,850             1,812,850             1,812,850             1,812,850             1,812,850             1,812,850
+lifters                                  296,596               296,596               296,596               296,596               296,596               296,596               296,596               296,596               296,596
+mean outcome                               0.612                 0.612                 0.612                 0.612                 0.612                 0.612                 0.612                 0.612                 0.612
+
+std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
+  [offset 0 (true milestones)] dropped, no variance: no_history
+  [placebo +2.5 kg / +5 lb] dropped, no variance: no_history
+  [placebo +5 kg / +10 lb] dropped, no variance: no_history
+  [placebo +7.5 kg / +15 lb] dropped, no variance: no_history
+  [placebo +10 kg / +20 lb] dropped, no variance: no_history
+  [placebo +12.5 kg / +25 lb] dropped, no variance: no_history
+  [placebo +15 kg / +30 lb] dropped, no variance: no_history
+  [placebo +17.5 kg / +35 lb] dropped, no variance: no_history
+  [placebo +20 kg / +40 lb] dropped, no variance: no_history
+
+Implies: 7 of 8 placebo offsets are significant at 5% (range -2.035pp to +0.917pp); the true estimate is -0.724pp.
+
+
+5. ASYMMETRY: OWN MILESTONES AND THE OTHER REGION'S
+==================================================================================================================
+effect sizes in percentage points of success probability
+
+                            lb region vs pound m  kg region vs pound m  lb region vs kilo mi  kg region vs kilo mi
+------------------------------------------------------------------------------------------------------------------
+running_kg                             3.467***             -1.151***              4.508***             21.107*** 
+                                         (0.376)               (0.366)               (0.287)               (0.266)
+above                                -34.079***             -1.804               -70.943***           -205.939*** 
+                                         (3.150)               (3.066)               (2.271)               (2.262)
+running_x_above                        0.789                 2.199***             11.933***             10.110*** 
+                                         (0.823)               (0.802)               (0.660)               (0.625)
+------------------------------------------------------------------------------------------------------------------
+observations                             505,989               497,991               915,742               897,108
+lifters                                  137,720               135,638               150,671               149,528
+mean outcome                               7.651                 7.333                 7.725                 7.336
+
+std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
+  [lb region vs pound milestones (own)] outcome jump_kg in kg; |window| <= 6 kg
+  [kg region vs pound milestones (other's)] outcome jump_kg in kg; |window| <= 6 kg
+  [lb region vs kilo milestones (other's)] outcome jump_kg in kg; |window| <= 6 kg
+  [kg region vs kilo milestones (own)] outcome jump_kg in kg; |window| <= 6 kg
+
+Milestone weights the asymmetry test snaps to, 1st-99th percentile of second-attempt weight (40.0-305.0 kg):
+  pound grid (50 lb), as loaded in kilo meets: 47.5, 70, 92.5, 115, 137.5, 160, 182.5, 205, 227.5, 250, 272.5, 295
+  kilo grid (10 kg)                          : 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240, 250, 260, 270, 280, 290, 300
+The econ stage used the POUND grid in both regions: add_running_variable branches on the meet's loading unit, not its region.
+
+GRID OVERLAP: 3 of 12 pound milestones (25%) are also kilo milestones: 70, 160, 250 kg.
+  The loadable pound grid is mostly spaced 22.5 kg against the kilo grid's 10 kg, so coincidences fall roughly every 90 kg. At those weights on_lb_milestone and on_kg_milestone are both 1 and no comparison can separate them.
+  lb region vs pound milestones (own)            slope difference +0.0079 kg/kg  [-0.0082, +0.0240]
+  kg region vs pound milestones (other's)        slope difference +0.0220 kg/kg  [+0.0063, +0.0377]
+  lb region vs kilo milestones (other's)         slope difference +0.1193 kg/kg  [+0.1064, +0.1323]
+  kg region vs kilo milestones (own)             slope difference +0.1011 kg/kg  [+0.0888, +0.1134]
+Implies: the econ asymmetry result compared both regions against the pound grid; the own/other split above separates grid from region.
+
+
+6. HETEROGENEITY BY PRIOR MEETS
+========================================================================================================================================
+effect sizes in percentage points of success probability
+
+                            prior_meets 0 (first       prior_meets 1-2       prior_meets 3-5      prior_meets 6-10       prior_meets 11+
+----------------------------------------------------------------------------------------------------------------------------------------
+jump_pct                              -0.186***             -0.129***             -0.062                 0.076                -0.043    
+                                         (0.019)               (0.027)               (0.043)               (0.069)               (0.127)
+on_lb_milestone                       -0.056                -0.117                -0.129                 0.140                 1.529    
+                                         (0.259)               (0.299)               (0.405)               (0.570)               (0.941)
+on_kg_milestone                        1.552***              1.162***              0.963***              1.245***              1.762*** 
+                                         (0.167)               (0.194)               (0.271)               (0.380)               (0.615)
+lb_region                              4.200***              3.510***              2.585***              3.221***              3.344*** 
+                                         (0.167)               (0.199)               (0.291)               (0.464)               (0.880)
+lb_ms_x_region                        -0.347                -0.963**              -0.678                -1.470*               -0.240    
+                                         (0.337)               (0.385)               (0.535)               (0.801)               (1.471)
+kg_ms_x_region                        -0.865***             -0.628**               0.646*               -0.514                -2.548**  
+                                         (0.243)               (0.278)               (0.388)               (0.583)               (1.043)
+prior_meets                                                 -1.263***             -0.221*               -0.079                 0.073    
+                                                               (0.135)               (0.117)               (0.106)               (0.088)
+would_be_pr                                                 -7.856***             -7.752***             -8.957***            -10.061*** 
+                                                               (0.190)               (0.214)               (0.296)               (0.530)
+----------------------------------------------------------------------------------------------------------------------------------------
+observations                             739,882               584,206               303,104               137,139                48,519
+lifters                                  292,700               146,390                57,247                19,354                 4,508
+mean outcome                               0.630                 0.600                 0.595                 0.602                 0.621
+
+std errors clustered by lifter in parentheses; * p<0.1, ** p<0.05, *** p<0.01
+  [prior_meets 0 (first meet)] dropped, no variance: prior_meets, would_be_pr, no_history
+  [prior_meets 1-2] dropped, no variance: no_history
+  [prior_meets 3-5] dropped, no variance: no_history
+  [prior_meets 6-10] dropped, no variance: no_history
+  [prior_meets 11+] dropped, no variance: no_history
+
+  prior_meets 0 (first meet) n=  739,882  lifters= 292,700  -0.347pp  95% CI [-1.006, +0.313]  p=0.303
+  prior_meets 1-2          n=  584,206  lifters= 146,390  -0.963pp  95% CI [-1.718, -0.208]  p=0.0125
+  prior_meets 3-5          n=  303,104  lifters=  57,247  -0.678pp  95% CI [-1.727, +0.370]  p=0.205
+  prior_meets 6-10         n=  137,139  lifters=  19,354  -1.470pp  95% CI [-3.039, +0.099]  p=0.0664
+  prior_meets 11+          n=   48,519  lifters=   4,508  -0.240pp  95% CI [-3.124, +2.644]  p=0.87
+Implies: 1 of 5 experience bands have an interval excluding zero.

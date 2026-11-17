@@ -321,14 +321,21 @@ def fit_model(
 # --- sample and variables ---------------------------------------------------
 
 
-def on_fake_milestone(weight_kg: pl.Expr, unit: str, step: float) -> pl.Expr:
-    """A placebo milestone sits PLACEBO_OFFSET_KG above a real one.
+def on_fake_milestone(
+    weight_kg: pl.Expr, unit: str, step: float, offset_kg: float | None = None
+) -> pl.Expr:
+    """A placebo milestone sits `offset_kg` above a real one.
 
     Shifting the weight back by the offset and asking whether *that* is a real
     milestone defines the fake grid without duplicating the milestone rules.
+
+    The offset defaults to PLACEBO_OFFSET_KG, the single placebo CLAUDE.md
+    names. diagnostics.py sweeps it to build a family of placebos; passing it
+    does not change the headline placebo.
     """
+    shift = PLACEBO_OFFSET_KG if offset_kg is None else offset_kg
     helper = on_lb_milestone_lb_meet if unit == "lb" else on_lb_milestone_kg_meet
-    return helper(weight_kg - PLACEBO_OFFSET_KG, step)
+    return helper(weight_kg - shift, step)
 
 
 def build_sample(df: pl.DataFrame) -> pl.DataFrame:
